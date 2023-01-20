@@ -96,6 +96,7 @@ def save_preds(
     if plot:
         make_plot(inf_path / (folder_name + '.png'), folder_name, pred_lens, sys_i, dia_i)
 
+
 def make_animation(
             save_path: Union[Path, str], clip: np.ndarray, preds: np.ndarray, 
             pred_pts: np.ndarray, pred_lens: np.ndarray, sys_i, dia_i, 
@@ -141,7 +142,7 @@ def make_animation(
     # Modifies plot for each frame of animation
     def animate(i):
         im.set_data(overlay_preds(preds[i], clip[i] / 255))
-        l1.set_data([i, i , i], pred_lens[i])
+        l1.set_data([i, i, i], pred_lens[i])
         l2.set_data(*pred_pts[i].T)
 
     # Save animation
@@ -150,6 +151,7 @@ def make_animation(
     ani.save(save_path, writer)
 
     del fig
+
 
 def make_plot(
             save_path: Union[Path, str], title: str, pred_lens: np.ndarray, 
@@ -223,7 +225,7 @@ def make_animation_cv2(
 class PlaxHypertrophyInferenceEngine:
 
     def __init__(
-                self, model_path: Union[Path, str]=model_paths['plax'],
+                self, model_path: Union[Path, str] = model_paths['plax'],
                 device='cuda:0', 
             ) -> None:
         if isinstance(model_path, str):
@@ -274,13 +276,12 @@ class PlaxHypertrophyInferenceEngine:
         # Start inference threads. Run inference, save results to out_dir
         p('Running inference')
         threads = []
-        for fn, clip, preds in engine._run_on_clips(list(in_dir.iterdir()), verbose=verbose, 
-                                h=h, w=w, channels_in=channels_in, channels_out=channels_out,
-                                batch_size=batch_size):
+        for fn, clip, pred in self._run_on_clips(list(in_dir.iterdir()), batch_size=batch_size, h=h, w=w,
+                                                 channels_in=channels_in, channels_out=channels_out, verbose=verbose):
             if len(threads) > n_threads:
                 t = threads.pop(0)
                 t.join()
-            t = Thread(target=save_preds, args=(out_dir, fn.name, clip, preds, save_csv, save_avi, save_plot, save_npy))
+            t = Thread(target=save_preds, args=(out_dir, fn, clip, pred, save_csv, save_avi, save_plot, save_npy))
             t.start()
             threads.append(t)
         
@@ -293,7 +294,7 @@ class PlaxHypertrophyInferenceEngine:
     def _run_on_clips(
                 self, paths, batch_size=100, h=480, w=640, channels_in=3, channels_out=4, verbose=True
             ) -> None:
-        """Internally used to iterate through a list of paths and run inferece. Batches may share frames from
+        """Internally used to iterate through a list of paths and run inference. Batches may share frames from
         several clips. Yields clips, predictions, and filenames when inference is finished. Used for performance.
         """
         
@@ -305,34 +306,36 @@ class PlaxHypertrophyInferenceEngine:
         })
 
         # Run
-        clips = dict()  # clips currently being processed
+        infer = dict()  # clips currently being processed
         batch = np.zeros((batch_size, h, w, channels_in))
         for si in tqdm(range(0, len(frame_map), batch_size)) if verbose else range(0, len(frame_map), batch_size):
             
             # Get batch files
             batch_map = frame_map.iloc[si:min(si + batch_size, len(frame_map))]
             batch_paths = batch_map['path'].unique()
-            l = list(clips.items())
+            l = list(infer.items())
             
             # Check if inference has finished for all current clips
             # and yield results for any finished.
             for k, v in l:
                 if k not in batch_paths:
-                    clips.pop(k)
+                    infer.pop(k)
                     yield k, v[0], v[1]
 
             # Generate batch
             for p in batch_paths:
-                if p not in clips:
+                if p not in infer:
                     c = read_clip(p, res=(w, h))
-                    clips[p] = (c, np.zeros((len(c), h, w, channels_out), dtype=np.float))
-                batch[:len(batch_map)][batch_map['path'] == p] = clips[p][0][batch_map[batch_map['path'] == p]['frame']]
+                    infer[p] = (c, np.zeros((len(c), h, w, channels_out), dtype=np.float))
+                batch[:len(batch_map)][batch_map['path'] == p] = infer[p][0][batch_map[batch_map['path'] == p]['frame']]
             
             # Run inference and set results
             preds = self.run_model_np(batch[:len(batch_map)])
             for p in batch_paths:
-                clips[p][1][batch_map[batch_map['path'] == p]['frame']] = preds[batch_map['path'] == p]
-    
+                infer[p][1][batch_map[batch_map['path'] == p]['frame']] = preds[batch_map['path'] == p]
+
+        for fn in infer:
+            yield fn, infer[fn][0], infer[fn][1]
 
     def run_model_np(self, x: np.ndarray) -> np.ndarray:
         """Run inference on a numpy array video.
@@ -351,8 +354,9 @@ class PlaxHypertrophyInferenceEngine:
         preds = np.moveaxis(preds_tensor.detach().cpu().numpy(), 1, -1)
         return preds
 
+
 if __name__ == '__main__':
-    
+
     # CLI Interface for running inference on a directory
     # and saving predictions to an output directory.
     args = {
@@ -367,16 +371,19 @@ if __name__ == '__main__':
     }
     parser = ArgumentParser()
     parser.add_argument('in_dir', type=str, help='Directory containing .avi\' to run inference on.')
-    parser.add_argument('out_dir', type=str, help='Direcotry to output predictions to.')
+    parser.add_argument('out_dir', type=str, help='Directory to output predictions to.')
     for k, (v, h) in args.items():
         h += f' default={v}'
         if isinstance(v, bool):
             parser.add_argument('--' + k.replace('_', '-'), action=BoolAction, default=v, help=h)
         else:
             parser.add_argument('--' + k.replace('_', '-'), type=type(v), default=v, help=h)
-    args.update({k.replace('-', '_'): v for k, (v, h) in vars(parser.parse_args()).items()})
-    get_args = lambda *l: {k: args[k][0] for k in l}
+    args.update({k.replace('-', '_'): v for k, v in vars(parser.parse_args()).items()})
+    if not torch.torch.cuda.is_available():
+        args.update({'device': 'cpu'})
+    get_args = lambda *l: {k: args[k] for k in l}
 
     # Run inference
     engine = PlaxHypertrophyInferenceEngine(**get_args('device', 'model_path'))
-    engine.run_on_dir(**get_args('in_dir', 'out_dir', 'batch_size', 'n_threads', 'verbose', 'save_csv', 'save_avi', 'save_npy'))
+    engine.run_on_dir(
+        **get_args('in_dir', 'out_dir', 'batch_size', 'n_threads', 'verbose', 'save_csv', 'save_avi', 'save_npy'))
