@@ -12,7 +12,7 @@ from typing import Union
 weights_path = Path(__file__).parent / 'weights'
 model_paths = {
     'plax': weights_path / 'hypertrophy_model.pt',
-    'amyloid': weights_path / 'amyloid.pt',
+    'amyloid': weights_path / 'amyloid_model.pt',
     'as': weights_path / 'as_model.pt'
 }
 
