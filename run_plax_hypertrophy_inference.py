@@ -4,6 +4,7 @@ import argparse
 from operator import mod
 from typing import Union
 from argparse import ArgumentParser
+import os
 import cv2
 import numpy as np
 import pandas as pd
@@ -48,8 +49,9 @@ def save_preds(
     """
 
     # Create folder
+    fn = str(os.path.basename(str(fn)))
     folder_name = fn.replace('.avi', '').replace('.', '_')
-    inf_path = p / folder_name
+    inf_path = p / Path(folder_name)
     if not inf_path.exists():
         inf_path.mkdir()
     
@@ -317,7 +319,7 @@ class PlaxHypertrophyInferenceEngine:
             for k, v in l:
                 if k not in batch_paths:
                     clips.pop(k)
-                    yield Path(k), v[0], v[1]
+                    yield k, v[0], v[1]
 
             # Generate batch
             for p in batch_paths:
