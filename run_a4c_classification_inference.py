@@ -117,14 +117,16 @@ if __name__ == '__main__':
     }
     parser = ArgumentParser()
     parser.add_argument('in_dir', type=str, help='Directory containing .avi\' to run inference on.')
-    parser.add_argument('out_dir', type=str, help='Direcotry to output predictions to.')
+    parser.add_argument('out_dir', type=str, help='Directory to output predictions to.')
     for k, (v, h) in args.items():
         if isinstance(v, bool):
             parser.add_argument('--' + k.replace('_', '-'), action=BoolAction, default=v, help=h)
         else:
             parser.add_argument('--' + k.replace('_', '-'), type=type(v), default=v, help=h)
     args.update({k.replace('-', '_'): v for k, v in vars(parser.parse_args()).items()})
-    get_args = lambda l: {k: args[k][0] for k in l}
+    if not torch.torch.cuda.is_available():
+        args.update({'device': 'cpu'})
+    get_args = lambda l: {k: args[k] for k in l}
 
     # Run inference
     engine = A4cClassificationInferenceEngine(**get_args(['device', 'model_path']))
