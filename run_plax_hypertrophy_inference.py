@@ -229,7 +229,7 @@ class PlaxHypertrophyInferenceEngine:
                 device='cuda:0', 
             ) -> None:
         if isinstance(model_path, str):
-            model_paths = Path(model_path)
+            model_path = Path(model_path)
         self.device = device
         self.model = None
         self.figure = None
